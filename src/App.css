@@ -1,0 +1,16 @@
+.logo-container {
+  padding: 16px;
+  color: white;
+  font-size: 1.25rem;
+  font-weight: bold;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.site-layout-background {
+  background: #fff;
+}
