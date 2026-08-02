@@ -6,34 +6,35 @@ import {
 import { ExperimentOutlined, DeleteOutlined, FilterOutlined } from '@ant-design/icons';
 import { formatDate, formatTime, isLocalToday, isLocalYesterday, isLocalThisWeek, isLocalThisMonth } from '../utils/timestamps';
 import { recordWastage, deleteWastage } from '../api';
+import SearchBar from './SearchBar';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-export default function Wastage({ products, setProducts, wastage, setWastage, reloadData }) {
+export default function Wastage({ products, setProducts, wastage, setWastage, sales, reloadData }) {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [preview, setPreview] = useState(null);
   const [dateFilter, setDateFilter] = useState('today');
+  const [searchQuery, setSearchQuery] = useState('');
   const [form] = Form.useForm();
   const { token } = theme.useToken();
 
   const showModal = (product = null) => {
-    setIsModalVisible(true);
     form.resetFields();
     setPreview(null);
+    setSelectedProduct(null);
     if (product) {
       const isPacket = product.unit_type === 'packet';
       form.setFieldsValue({
         productId: product.id,
-        gramsWasted: isPacket ? product.remainingPackets : product.currentStockGrams,
         wasteUnit: isPacket ? 'pkt' : 'g',
       });
       setSelectedProduct(product);
-      updatePreview(product, isPacket ? product.remainingPackets : product.currentStockGrams);
     } else {
       form.setFieldsValue({ wasteUnit: 'g' });
     }
+    setIsModalVisible(true);
   };
 
   const handleCancel = () => {
@@ -45,6 +46,10 @@ export default function Wastage({ products, setProducts, wastage, setWastage, re
 
   const filteredWastage = React.useMemo(() => {
     return wastage.filter(w => {
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        if (!w.productName?.toLowerCase().includes(q)) return false;
+      }
       const d = w.wasted_at;
       if (dateFilter === 'today') return isLocalToday(d);
       if (dateFilter === 'yesterday') return isLocalYesterday(d);
@@ -52,7 +57,7 @@ export default function Wastage({ products, setProducts, wastage, setWastage, re
       if (dateFilter === 'month') return isLocalThisMonth(d);
       return true; // 'all'
     });
-  }, [wastage, dateFilter]);
+  }, [wastage, dateFilter, searchQuery]);
 
   const updatePreview = (product, qty) => {
     if (!product || !qty) { setPreview(null); return; }
@@ -102,11 +107,12 @@ export default function Wastage({ products, setProducts, wastage, setWastage, re
       const payload = {
         item_id: product.id,
         qty_wasted: qtyWasted,
-        reason: values.reason || 'Manual write-off'
+        reason: values.reason || 'Manual write-off',
+        transaction_date: values.transactionDate
       };
       await recordWastage(payload);
       message.success('Wastage recorded!');
-      await reloadData();
+      await reloadData(false);
       setIsModalVisible(false);
       form.resetFields();
       setSelectedProduct(null);
@@ -121,7 +127,7 @@ export default function Wastage({ products, setProducts, wastage, setWastage, re
     try {
       await deleteWastage(id);
       message.success('Wastage record deleted. Inventory restored.');
-      await reloadData();
+      await reloadData(false);
     } catch (error) {
       message.error(error.response?.data || 'Failed to delete wastage record');
     }
@@ -182,24 +188,23 @@ export default function Wastage({ products, setProducts, wastage, setWastage, re
     }
   ];
 
-  // Products with stock > 0
-  const productOptions = products.filter(p =>
-    p.unit_type === 'packet' ? (p.remainingPackets || 0) > 0 : (p.currentStockGrams || 0) > 0
-  );
+  const productOptions = products.filter(p => {
+    const hasStock = p.unit_type === 'packet' ? (p.remainingPackets || 0) > 0 : (p.currentStockGrams || 0) > 0;
+    return hasStock;
+  });
 
   const isPacketProduct = selectedProduct?.unit_type === 'packet';
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <Title level={2} style={{ margin: 0 }}>Wastage / Spoilage</Title>
-          <Space>
-            <Text type="secondary">Write off expired or damaged stock. Loss is valued at cost price.</Text>
-          </Space>
+          <Text type="secondary">Write off expired or damaged stock. Loss is valued at cost price.</Text>
         </div>
-        <Space>
-          <div style={{ marginRight: 16 }}>
+        <Space wrap>
+          <SearchBar placeholder="Search by item name..." onSearch={setSearchQuery} />
+          <div>
             <FilterOutlined style={{ color: '#888', marginRight: 8 }} />
             <Select value={dateFilter} onChange={setDateFilter} style={{ width: 140 }}>
               <Option value="today">Today</Option>
@@ -242,7 +247,7 @@ export default function Wastage({ products, setProducts, wastage, setWastage, re
             return (
               <Tag
                 key={p.id}
-                color={isLow ? 'red' : 'green'}
+                color={isLow ? 'red' : 'default'}
                 style={{ fontSize: 12, padding: '4px 10px', borderRadius: 8 }}
               >
                 <strong>{p.name}</strong>: {stockText}{isLow ? ' ⚠' : ''}
@@ -266,13 +271,14 @@ export default function Wastage({ products, setProducts, wastage, setWastage, re
         </div>
       )}
 
-      <Table columns={columns} dataSource={filteredWastage} rowKey="id" pagination={{ pageSize: 8 }} />
+      <Table columns={columns} dataSource={filteredWastage} rowKey="id" pagination={{ pageSize: 8 }} scroll={{ x: 'max-content' }} />
 
       <Modal title="Record Wastage / Spoilage" open={isModalVisible} onCancel={handleCancel} footer={null}>
         <Form
           form={form}
           layout="vertical"
           onFinish={handleSave}
+          initialValues={{ transactionDate: new Date().toISOString().split('T')[0] }}
           onValuesChange={(changed, all) => {
             const prod = selectedProduct || products.find(p => p.id === all.productId);
             if (!prod) return;
@@ -281,6 +287,10 @@ export default function Wastage({ products, setProducts, wastage, setWastage, re
             updatePreview(prod, grams);
           }}
         >
+          <Form.Item name="transactionDate" label="Wastage Date" tooltip="Date this wastage occurred (backdate if needed)">
+            <input type="date" style={{ width: '100%', padding: '8px 12px', border: '1px solid #d9d9d9', borderRadius: '8px', fontSize: '16px' }} />
+          </Form.Item>
+          
           <Form.Item name="productId" label="Product" rules={[{ required: true }]}>
             <Select placeholder="Which product is being written off?" onChange={handleProductChange}>
               {productOptions.map(p => (

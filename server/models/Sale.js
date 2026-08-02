@@ -13,7 +13,8 @@ const saleSchema = new mongoose.Schema({
   profit: { type: Number },
   
   // Timestamps
-  sold_at: { type: Date, default: Date.now, immutable: true }
+  sold_at: { type: Date }, // Transaction date (mutable, backdatable)
+  entry_created_at: { type: Date, default: Date.now, immutable: true } // Audit trail
 });
 
 module.exports = mongoose.model('Sale', saleSchema, 'sales');

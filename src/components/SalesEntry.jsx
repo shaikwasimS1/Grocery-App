@@ -6,6 +6,7 @@ import {
 import { PlusOutlined, PrinterOutlined, ClockCircleOutlined, FilterOutlined } from '@ant-design/icons';
 import { formatDate, formatTime, isLocalToday, isLocalYesterday, isLocalThisWeek, isLocalThisMonth } from '../utils/timestamps';
 import { recordSale } from '../api';
+import SearchBar from './SearchBar';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -16,6 +17,7 @@ export default function SalesEntry({ products, setProducts, sales, setSales, was
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [entryMode, setEntryMode] = useState('leftover');
   const [dateFilter, setDateFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const todayTotal = useMemo(() => {
     return sales
@@ -50,6 +52,15 @@ export default function SalesEntry({ products, setProducts, sales, setSales, was
       return true; // 'all'
     });
   }, [sales, dateFilter]);
+
+  const searchedSales = useMemo(() => {
+    if (!searchQuery) return filteredSales;
+    const q = searchQuery.toLowerCase();
+    return filteredSales.filter(s =>
+      s.productName?.toLowerCase().includes(q) ||
+      (s.id && String(s.id).toLowerCase().includes(q))
+    );
+  }, [filteredSales, searchQuery]);
 
   const showModal = () => {
     setIsModalVisible(true);
@@ -127,6 +138,7 @@ export default function SalesEntry({ products, setProducts, sales, setSales, was
         qty_sold: qtySold,
         total_amount: values.amountReceived,
         auto_waste: !isPacket && entryMode === 'leftover', // Automatically waste the rest in Leftover mode
+        transaction_date: values.transactionDate,
       };
 
       await recordSale(payload);
@@ -134,7 +146,8 @@ export default function SalesEntry({ products, setProducts, sales, setSales, was
       if (!isPacket && entryMode === 'leftover' && (product.currentStockGrams || 0) - qtySold > 0) {
         message.info('Auto-wastage recorded for remaining stock.');
       }
-      await reloadData();
+      
+      await reloadData(false);
       setIsModalVisible(false);
       form.resetFields();
       setSelectedProduct(null);
@@ -217,7 +230,7 @@ export default function SalesEntry({ products, setProducts, sales, setSales, was
         : (r.gramsSold >= 1000 ? `${(r.gramsSold / 1000).toFixed(2)} kg` : `${r.gramsSold} g`)
     },
     { title: 'Revenue', dataIndex: 'amountReceived', render: v => <Tag color="green">₹{v?.toFixed(2)}</Tag> },
-    { title: 'COGS', key: 'cogs', render: (_, r) => <Text type="secondary">₹{(r.cogs || 0).toFixed(2)}</Text> },
+    { title: 'Purchase Price', key: 'cogs', render: (_, r) => <Text type="secondary">₹{(r.cogs || 0).toFixed(2)}</Text> },
     {
       title: 'Gross Profit',
       key: 'profit',
@@ -237,7 +250,7 @@ export default function SalesEntry({ products, setProducts, sales, setSales, was
           const qty = prod.remainingPackets ?? 0;
           const isLow = qty < 3;
           return (
-            <Text type={isLow ? 'danger' : 'success'} strong>
+            <Text type={isLow ? 'danger' : undefined} strong>
               {qty} pkt{isLow && <span style={{ display: 'block', fontSize: 10 }}>⚠ Low</span>}
             </Text>
           );
@@ -245,11 +258,12 @@ export default function SalesEntry({ products, setProducts, sales, setSales, was
         const grams = prod.currentStockGrams || 0;
         const isLow = grams < 500;
         return (
-          <Text type={isLow ? 'danger' : 'success'} strong>
+          <Text type={isLow ? 'danger' : undefined} strong>
             {grams >= 1000 ? `${(grams/1000).toFixed(2)} kg` : `${grams} g`}
             {isLow && <span style={{ display: 'block', fontSize: 10 }}>⚠ Low</span>}
           </Text>
         );
+
       }
     },
     {
@@ -296,12 +310,12 @@ export default function SalesEntry({ products, setProducts, sales, setSales, was
         if (prod.unit_type === 'packet') {
           const qty = prod.remainingPackets ?? 0;
           const isLow = qty < 3;
-          return <Text type={isLow ? 'danger' : 'success'} strong>{qty} pkt{isLow && ' ⚠'}</Text>;
+          return <Text type={isLow ? 'danger' : undefined} strong>{qty} pkt{isLow && ' ⚠'}</Text>;
         }
         const grams = prod.currentStockGrams || 0;
         const isLow = grams < 500;
         const label = grams >= 1000 ? `${(grams/1000).toFixed(2)} kg` : `${grams} g`;
-        return <Text type={isLow ? 'danger' : 'success'} strong>{label}{isLow && ' ⚠'}</Text>;
+        return <Text type={isLow ? 'danger' : undefined} strong>{label}{isLow && ' ⚠'}</Text>;
       }
     },
   ];
@@ -344,7 +358,7 @@ export default function SalesEntry({ products, setProducts, sales, setSales, was
             return (
               <Tag
                 key={p.id}
-                color={isLow ? 'red' : 'green'}
+                color={isLow ? 'red' : 'default'}
                 style={{ fontSize: 12, padding: '4px 10px', borderRadius: 8 }}
               >
                 <strong>{p.name}</strong>: {stockText}{isLow ? ' ⚠' : ''}
@@ -357,7 +371,8 @@ export default function SalesEntry({ products, setProducts, sales, setSales, was
       <Tabs 
         defaultActiveKey="transactions" 
         tabBarExtraContent={
-          <Space>
+          <Space wrap>
+            <SearchBar placeholder="Search by item or bill no..." onSearch={setSearchQuery} />
             <FilterOutlined style={{ color: '#888' }} />
             <Select value={dateFilter} onChange={setDateFilter} style={{ width: 140 }}>
               <Option value="today">Today</Option>
@@ -371,16 +386,17 @@ export default function SalesEntry({ products, setProducts, sales, setSales, was
         items={[
           {
             key: 'summary',
-            label: '📊 Today\'s Item Totals',
-            children: <Table columns={itemSummaryColumns} dataSource={todayItemSummary} rowKey="productName" pagination={{ pageSize: 8 }} scroll={{ x: 500 }} />
+            label: "Today's Item Totals",
+            children: <Table columns={itemSummaryColumns} dataSource={todayItemSummary} rowKey="productName" pagination={{ pageSize: 8 }} scroll={{ x: 'max-content' }} />
           },
           {
             key: 'transactions',
-            label: '🧾 Transactions Log',
-            children: <Table columns={columns} dataSource={filteredSales} rowKey="id" pagination={{ pageSize: 8 }} scroll={{ x: 800 }} />
+            label: 'Transactions Log',
+            children: <Table columns={columns} dataSource={searchedSales} rowKey="id" pagination={{ pageSize: 8 }} scroll={{ x: 'max-content' }} locale={{ emptyText: searchQuery ? 'No sales match your search.' : 'No sales found for this period.' }} />
           }
         ]} 
       />
+
 
       <Modal title="Log New Sale" open={isModalVisible} onCancel={handleCancel} footer={null}>
 
@@ -398,6 +414,7 @@ export default function SalesEntry({ products, setProducts, sales, setSales, was
           form={form}
           layout="vertical"
           onFinish={handleSave}
+          initialValues={{ transactionDate: new Date().toISOString().split('T')[0] }}
           onValuesChange={(changed, all) => {
             if (!selectedProduct || isPacketProduct) return;
             if (entryMode === 'leftover' && (changed.leftoverQty !== undefined || changed.leftoverUnit !== undefined)) {
@@ -409,6 +426,10 @@ export default function SalesEntry({ products, setProducts, sales, setSales, was
             }
           }}
         >
+          <Form.Item name="transactionDate" label="Sale Date" tooltip="Date this sale happened (backdate if needed)">
+            <input type="date" style={{ width: '100%', padding: '8px 12px', border: '1px solid #d9d9d9', borderRadius: '8px', fontSize: '16px' }} />
+          </Form.Item>
+          
           <Form.Item name="productId" label="Product" rules={[{ required: true }]}>
             <Select placeholder="Select product" onChange={handleProductChange}>
               {products.map(p => (

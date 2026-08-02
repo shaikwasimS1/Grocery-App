@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Table, Button, Modal, Form, Input, InputNumber,
   Select, Space, Popconfirm, Typography, Tag, Divider, Tooltip, Alert, theme, message, Radio
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, ClockCircleOutlined, BoxPlotOutlined, InboxOutlined, FilterOutlined } from '@ant-design/icons';
-import { generateTimestamp, formatTimestamp, isLocalToday, isLocalYesterday, isLocalThisWeek, isLocalThisMonth } from '../utils/timestamps';
+import { generateTimestamp, formatTimestamp, formatTime, isLocalToday, isLocalYesterday, isLocalThisWeek, isLocalThisMonth } from '../utils/timestamps';
 import { addInventoryItem, updateInventoryItem, deleteInventoryItem } from '../api';
+import SearchBar from './SearchBar';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -39,6 +40,15 @@ export default function ProductManagement({ products, setProducts, reloadData })
   const { token } = theme.useToken();
   const [loading, setLoading] = useState(false);
   const [dateFilter, setDateFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    const handleGlobalSearch = (e) => {
+      setSearchQuery(e.detail.text);
+    };
+    window.addEventListener('global-search', handleGlobalSearch);
+    return () => window.removeEventListener('global-search', handleGlobalSearch);
+  }, []);
 
   const computePreview = (values) => {
     if (unitType !== 'weight') { setPreview(null); return; }
@@ -52,6 +62,10 @@ export default function ProductManagement({ products, setProducts, reloadData })
   };
 
   const showModal = (product = null) => {
+    form.resetFields();
+    setPreview(null);
+    setEditingProduct(null);
+
     if (product) {
       setEditingProduct(product);
       const type = product.unit_type || 'weight';
@@ -65,7 +79,6 @@ export default function ProductManagement({ products, setProducts, reloadData })
           sellingPricePerPacket: product.sellingPricePerPacket,
           remainingPackets: product.remainingPackets,
         });
-        setPreview(null);
       } else {
         form.setFieldsValue({
           name: product.name,
@@ -84,11 +97,8 @@ export default function ProductManagement({ products, setProducts, reloadData })
         });
       }
     } else {
-      setEditingProduct(null);
       setUnitType('weight');
-      form.resetFields();
       form.setFieldsValue({ unitType: 'weight', purchaseUnit: 'kg' });
-      setPreview(null);
     }
     setIsModalVisible(true);
   };
@@ -110,6 +120,7 @@ export default function ProductManagement({ products, setProducts, reloadData })
         cost_price_per_packet: values.totalPurchasePrice / values.totalPacketsPurchased,
         selling_price_per_packet: values.sellingPricePerPacket,
         remaining_packets: values.remainingPackets,
+        transaction_date: values.transactionDate,
       };
     } else {
       const pricing = derivePricing({
@@ -128,6 +139,7 @@ export default function ProductManagement({ products, setProducts, reloadData })
         margin_price: pricing.marginPerKg,
         selling_price_per_unit: pricing.sellingPricePerKg / 1000,
         remaining_qty: values.remainingGrams,
+        transaction_date: values.transactionDate,
       };
     }
 
@@ -140,7 +152,7 @@ export default function ProductManagement({ products, setProducts, reloadData })
         await addInventoryItem(payload);
         message.success('Product added to database!');
       }
-      await reloadData();
+      await reloadData(false);
       setIsModalVisible(false);
       form.resetFields();
       setPreview(null);
@@ -156,7 +168,7 @@ export default function ProductManagement({ products, setProducts, reloadData })
     try {
       await deleteInventoryItem(id);
       message.success('Product deleted from database!');
-      await reloadData();
+      await reloadData(false);
     } catch (error) {
       message.error('Failed to delete product');
     }
@@ -182,29 +194,39 @@ export default function ProductManagement({ products, setProducts, reloadData })
       title: 'Date Added',
       key: 'created_at',
       sorter: (a, b) => new Date(a.created_at) - new Date(b.created_at),
-      render: (_, record) => (
-        <div style={{ lineHeight: 1.3 }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {formatTimestamp(record.created_at)}
-          </Text>
-          {record.updated_at && (
-            <div><span style={{ color: '#faad14', fontSize: 10 }}>· edited</span></div>
-          )}
-        </div>
-      )
+    render: (_, record) => {
+        // Show "edited" only if a user explicitly saved an edit via PUT
+        // We track this with a separate field; updated_at alone is unreliable
+        // because stock deductions (sales/wastage) also touch updated_at.
+        const wasManuallyEdited = record.manually_edited === true;
+        return (
+          <div style={{ lineHeight: 1.3 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {formatTimestamp(record.created_at)}
+            </Text>
+            {wasManuallyEdited && (
+              <div>
+                <Tooltip title={formatTimestamp(record.updated_at)}>
+                  <span style={{ color: '#faad14', fontSize: 10 }}>· edited {formatTime(record.updated_at)}</span>
+                </Tooltip>
+              </div>
+            )}
+          </div>
+        );
+      }
     },
     {
       title: 'Purchase',
       key: 'purchase',
       render: (_, r) => r.unit_type === 'packet' ? (
         <div style={{ lineHeight: 1.5 }}>
-          <Text>{r.totalPacketsPurchased} packets · ₹{r.costPricePerPacket}/pkt</Text>
+          <Text>{r.totalPacketsPurchased} packets · ₹{r.costPricePerPacket?.toFixed(2)}/pkt</Text>
           <br />
           <Text type="secondary" style={{ fontSize: 11 }}>Total: ₹{(r.totalPacketsPurchased * r.costPricePerPacket).toFixed(2)}</Text>
         </div>
       ) : (
         <div style={{ lineHeight: 1.5 }}>
-          <Text>{r.purchaseQuantity} {r.purchaseUnit} for <Text strong>₹{r.purchasePrice}</Text></Text>
+          <Text>{r.purchaseQuantity} {r.purchaseUnit} for <Text strong>₹{r.purchasePrice?.toFixed(2)}</Text></Text>
           <br />
           <Text type="secondary" style={{ fontSize: 11 }}>Costs you ₹{r.costPerGram ? (r.costPerGram * 1000).toFixed(2) : '—'}/kg</Text>
         </div>
@@ -220,7 +242,7 @@ export default function ProductManagement({ products, setProducts, reloadData })
       },
       render: (_, r) => r.unit_type === 'packet' ? (
         <div style={{ lineHeight: 1.5 }}>
-          <Tag color="blue" style={{ fontSize: 13 }}>₹{r.sellingPricePerPacket}/pkt</Tag>
+          <Tag color="blue" style={{ fontSize: 13 }}>₹{r.sellingPricePerPacket?.toFixed(2)}/pkt</Tag>
           <br />
           <Text type="secondary" style={{ fontSize: 11 }}>
             Profit: ₹{((r.sellingPricePerPacket || 0) - (r.costPricePerPacket || 0)).toFixed(2)}/pkt
@@ -278,6 +300,10 @@ export default function ProductManagement({ products, setProducts, reloadData })
 
   const filteredProducts = React.useMemo(() => {
     return products.filter(p => {
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        if (!p.name?.toLowerCase().includes(q)) return false;
+      }
       if (dateFilter === 'all') return true;
       const d = p.created_at;
       if (dateFilter === 'today') return isLocalToday(d);
@@ -286,17 +312,18 @@ export default function ProductManagement({ products, setProducts, reloadData })
       if (dateFilter === 'month') return isLocalThisMonth(d);
       return true;
     });
-  }, [products, dateFilter]);
+  }, [products, dateFilter, searchQuery]);
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <Title level={2} style={{ margin: 0 }}>Inventory</Title>
           <Text type="secondary">Manage your available stock and prices.</Text>
         </div>
-        <Space>
-          <div style={{ marginRight: 16 }}>
+        <Space wrap>
+          <SearchBar placeholder="Search by item name..." value={searchQuery} onSearch={setSearchQuery} />
+          <div>
             <FilterOutlined style={{ color: '#888', marginRight: 8 }} />
             <Select value={dateFilter} onChange={setDateFilter} style={{ width: 140 }}>
               <Option value="all">All Time</Option>
@@ -312,7 +339,7 @@ export default function ProductManagement({ products, setProducts, reloadData })
         </Space>
       </div>
 
-      <Table columns={columns} dataSource={filteredProducts} rowKey="id" pagination={{ pageSize: 8 }} scroll={{ x: 800 }} />
+      <Table columns={columns} dataSource={filteredProducts} rowKey="id" pagination={{ pageSize: 8 }} scroll={{ x: 'max-content' }} />
 
       <Modal
         title={editingProduct ? 'Edit Product' : 'Add New Product'}
@@ -340,8 +367,15 @@ export default function ProductManagement({ products, setProducts, reloadData })
           layout="vertical"
           onFinish={handleSave}
           onValuesChange={(_, allValues) => computePreview(allValues)}
-          initialValues={{ unitType: 'weight', purchaseUnit: 'kg' }}
+          initialValues={{ 
+            unitType: 'weight', 
+            purchaseUnit: 'kg',
+            transactionDate: new Date().toISOString().split('T')[0]
+          }}
         >
+          <Form.Item name="transactionDate" label="Purchase Date" tooltip="Date you bought this item (backdate if needed)">
+            <input type="date" style={{ width: '100%', padding: '8px 12px', border: '1px solid #d9d9d9', borderRadius: '8px', fontSize: '16px' }} />
+          </Form.Item>
           <Form.Item name="name" label="Product Name" rules={[{ required: true, message: 'Enter product name' }]}>
             <Input placeholder="e.g. Tomatoes, Pepper Powder Packets" size="large" />
           </Form.Item>

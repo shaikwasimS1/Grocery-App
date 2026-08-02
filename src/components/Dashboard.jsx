@@ -1,14 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import {
   Typography, Card, Row, Col, Statistic, Button, Table,
-  Select, Space, Alert, List, Tabs, Tag, theme, InputNumber
+  Select, Space, Alert, List, Tabs, Tag, theme, InputNumber, Spin, Tooltip
 } from 'antd';
-import { DownloadOutlined, WarningOutlined, WalletOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
+import { DownloadOutlined, WarningOutlined, FilePdfOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartTooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import dayjs from 'dayjs';
+import axios from 'axios';
 import {
   formatTimestamp, formatDate, getLocalDateKey,
   isLocalToday, isLocalYesterday, isLocalThisWeek, isLocalThisMonth, isLocalThisYear
@@ -24,9 +25,46 @@ export default function Dashboard({ sales, products, wastage = [] }) {
   const [cashInHand, setCashInHand] = useState(null);
   const { token } = theme.useToken();
 
-  // Low stock alerts
+  // PDF report state
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [pdfFrom, setPdfFrom] = useState(todayStr);
+  const [pdfTo, setPdfTo] = useState(todayStr);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const downloadPdf = async () => {
+    if (!pdfFrom || !pdfTo) return;
+    try {
+      setPdfLoading(true);
+      const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const url = `${apiBase.replace(/\/api$/, '')}/api/reports/full-pdf?from=${pdfFrom}&to=${pdfTo}`;
+      const response = await axios.get(url, { responseType: 'blob' });
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `FreshTrack_Report_${pdfFrom}_to_${pdfTo}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+    } catch (err) {
+      console.error('PDF download failed:', err);
+      alert('Failed to generate PDF. Make sure the server is running.');
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  // Low stock alerts — uses per-product threshold, with smart defaults
   const lowStockProducts = useMemo(() =>
-    (products || []).filter(p => p.currentStockGrams < 1000),
+    (products || []).filter(p => {
+      if (p.unit_type === 'packet') {
+        const threshold = p.low_stock_threshold ?? 3;
+        return (p.remainingPackets ?? 0) <= threshold;
+      } else {
+        const threshold = p.low_stock_threshold ?? 500; // grams
+        return (p.currentStockGrams ?? 0) <= threshold;
+      }
+    }),
     [products]
   );
   // Filtered sales for sales table and P&L
@@ -110,6 +148,42 @@ export default function Dashboard({ sales, products, wastage = [] }) {
     return { today, week, month, year, allTime };
   }, [sales]);
 
+  // Purchase (Investment) Snapshot
+  const purchaseSnapshot = useMemo(() => {
+    let today = 0, week = 0, month = 0, year = 0, allTime = 0;
+    (products || []).forEach(p => {
+      const ts = p.created_at || p.updated_at;
+      const cost = p.unit_type === 'packet'
+        ? ((p.totalPacketsPurchased || 0) * (p.costPricePerPacket || 0))
+        : (p.purchasePrice || 0);
+      allTime += cost;
+      if (ts) {
+        if (isLocalToday(ts))      today += cost;
+        if (isLocalThisWeek(ts))   week  += cost;
+        if (isLocalThisMonth(ts))  month += cost;
+        if (isLocalThisYear(ts))   year  += cost;
+      }
+    });
+    return { today, week, month, year, allTime };
+  }, [products]);
+
+  const quickProfits = useMemo(() => {
+    let today = 0, yesterday = 0;
+    sales.forEach(s => {
+      const p = s.grossProfit ?? (s.amountReceived - (s.cogs || s.costBasis || 0));
+      const ts = s.sold_at || s.date;
+      if (isLocalToday(ts)) today += p;
+      else if (isLocalYesterday(ts)) yesterday += p;
+    });
+    wastage.forEach(w => {
+      const loss = w.wastageLoss || 0;
+      const ts = w.wasted_at;
+      if (isLocalToday(ts)) today -= loss;
+      else if (isLocalYesterday(ts)) yesterday -= loss;
+    });
+    return { today, yesterday };
+  }, [sales, wastage]);
+
   // Chart data — last 7 days (profit vs wastage)
   const chartData = useMemo(() => {
     const data = [];
@@ -155,7 +229,7 @@ export default function Dashboard({ sales, products, wastage = [] }) {
       'Product':             s.productName,
       'Grams Sold':          s.gramsSold,
       'Revenue (₹)':         s.amountReceived,
-      'COGS (₹)':            (s.cogs || s.costBasis || 0).toFixed(2),
+      'Purchase Price (₹)':            (s.cogs || s.costBasis || 0).toFixed(2),
       'Gross Profit (₹)':    (s.grossProfit ?? (s.amountReceived - (s.cogs || s.costBasis || 0))).toFixed(2),
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(salesData), 'Sales');
@@ -178,11 +252,11 @@ export default function Dashboard({ sales, products, wastage = [] }) {
       'Purchase Cost (₹)':    r.purchasePrice,
       'Sold (kg)':            r.soldKg,
       'Revenue (₹)':          r.revenue.toFixed(2),
-      'COGS (₹)':             r.cogs.toFixed(2),
+      'Purchase Price (₹)':             r.cogs.toFixed(2),
       'Gross Profit (₹)':     r.grossProfit.toFixed(2),
       'Wasted (kg)':          r.wastedKg,
       'Wastage Loss (₹)':     r.wastageLoss.toFixed(2),
-      'Net Result (₹)':       r.netResult.toFixed(2),
+      'Net Profit (₹)':       r.netResult.toFixed(2),
       'Remaining Stock (kg)': r.remainingStockKg,
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pnlData), 'Per-Item P&L');
@@ -193,9 +267,9 @@ export default function Dashboard({ sales, products, wastage = [] }) {
   const salesColumns = [
     { title: 'Date & Time', key: 'sold_at', sorter: (a, b) => new Date(a.sold_at || a.date) - new Date(b.sold_at || b.date), render: (_, r) => formatTimestamp(r.sold_at || r.date) },
     { title: 'Product', dataIndex: 'productName', sorter: (a, b) => a.productName.localeCompare(b.productName) },
-    { title: 'Qty', key: 'qty', sorter: (a, b) => (a.gramsSold || 0) - (b.gramsSold || 0), render: (_, r) => r.gramsSold >= 1000 ? `${(r.gramsSold/1000).toFixed(2)}kg` : `${r.gramsSold}g` },
+    { title: 'Qty', key: 'qty', sorter: (a, b) => (a.gramsSold || 0) - (b.gramsSold || 0), render: (_, r) => r.gramsSold >= 1000 ? `${(r.gramsSold / 1000).toFixed(2)}kg` : `${r.gramsSold}g` },
     { title: 'Revenue', dataIndex: 'amountReceived', sorter: (a, b) => (a.amountReceived || 0) - (b.amountReceived || 0), render: v => `₹${v?.toFixed(2)}` },
-    { title: 'COGS', key: 'cogs', sorter: (a, b) => (a.cogs || a.costBasis || 0) - (b.cogs || b.costBasis || 0), render: (_, r) => `₹${(r.cogs || r.costBasis || 0).toFixed(2)}` },
+    { title: 'Purchase Price', key: 'cogs', sorter: (a, b) => (a.cogs || a.costBasis || 0) - (b.cogs || b.costBasis || 0), render: (_, r) => `₹${(r.cogs || r.costBasis || 0).toFixed(2)}` },
     { title: 'Gross Profit', key: 'gp', sorter: (a, b) => {
         const p1 = a.grossProfit ?? (a.amountReceived - (a.cogs || a.costBasis || 0));
         const p2 = b.grossProfit ?? (b.amountReceived - (b.cogs || b.costBasis || 0));
@@ -217,7 +291,7 @@ export default function Dashboard({ sales, products, wastage = [] }) {
     )},
     { title: 'Purchased', key: 'purch', sorter: (a, b) => a.purchasePrice - b.purchasePrice, render: (_, r) => `${r.purchaseLabel} · ₹${(r.purchasePrice||0).toFixed(2)}` },
     { title: 'Sold', key: 'sold', sorter: (a, b) => a.revenue - b.revenue, render: (_, r) => <Text type="success">{r.soldLabel} · ₹{r.revenue.toFixed(2)}</Text> },
-    { title: 'COGS', key: 'cogs', sorter: (a, b) => a.cogs - b.cogs, render: (_, r) => `₹${r.cogs.toFixed(2)}` },
+    { title: 'Purchase Price', key: 'cogs', sorter: (a, b) => a.cogs - b.cogs, render: (_, r) => `₹${r.cogs.toFixed(2)}` },
     { title: 'Gross Profit', key: 'gp', sorter: (a, b) => a.grossProfit - b.grossProfit, render: (_, r) => (
       <Text type={r.grossProfit >= 0 ? 'success' : 'danger'}>₹{r.grossProfit.toFixed(2)}</Text>
     )},
@@ -230,7 +304,7 @@ export default function Dashboard({ sales, products, wastage = [] }) {
         : <Text type="secondary">—</Text>
     },
     {
-      title: 'Net Result',
+      title: 'Net Profit',
       key: 'net',
       sorter: (a, b) => a.netResult - b.netResult,
       render: (_, r) => (
@@ -249,32 +323,85 @@ export default function Dashboard({ sales, products, wastage = [] }) {
           <Title level={2} style={{ margin: 0 }}>Reports Dashboard</Title>
           <Text type="secondary">Profit, wastage, and net result per item — all in one place.</Text>
         </div>
-        <Space>
-          <FilterOutlined style={{ color: '#888' }} />
-          <Select value={filterPeriod} onChange={setFilterPeriod} style={{ width: 140 }}>
-            <Option value="today">Today</Option>
-            <Option value="yesterday">Yesterday</Option>
-            <Option value="week">This Week</Option>
-            <Option value="month">This Month</Option>
-            <Option value="year">This Year</Option>
-            <Option value="all">All Time</Option>
-          </Select>
-        </Space>
-      </div>
+      <Space wrap>
+        <FilterOutlined style={{ color: '#888' }} />
+        <Select value={filterPeriod} onChange={setFilterPeriod} style={{ width: 140 }}>
+          <Option value="today">Today</Option>
+          <Option value="yesterday">Yesterday</Option>
+          <Option value="week">This Week</Option>
+          <Option value="month">This Month</Option>
+          <Option value="year">This Year</Option>
+          <Option value="all">All Time</Option>
+        </Select>
+      </Space>
+    </div>
+
+    {/* PDF Download Strip */}
+    <div style={{
+      display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12,
+      background: 'linear-gradient(135deg, #ede9fe, #f5f3ff)',
+      border: '1.5px solid #c4b5fd', borderRadius: 12,
+      padding: '14px 20px', marginBottom: 20
+    }}>
+      <FilePdfOutlined style={{ color: '#7c3aed', fontSize: 20 }} />
+      <Text strong style={{ color: '#5b21b6', marginRight: 8 }}>📄 Download Full Report (PDF)</Text>
+      <Space wrap>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>From:</Text>
+          <input
+            type="date" value={pdfFrom}
+            onChange={e => setPdfFrom(e.target.value)}
+            max={pdfTo}
+            style={{ padding: '5px 10px', border: '1px solid #c4b5fd', borderRadius: 8, fontSize: 13, background: '#fff' }}
+          />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>To:</Text>
+          <input
+            type="date" value={pdfTo}
+            onChange={e => setPdfTo(e.target.value)}
+            min={pdfFrom}
+            style={{ padding: '5px 10px', border: '1px solid #c4b5fd', borderRadius: 8, fontSize: 13, background: '#fff' }}
+          />
+        </div>
+        <Button
+          type="primary"
+          icon={pdfLoading ? <Spin size="small" /> : <FilePdfOutlined />}
+          onClick={downloadPdf}
+          disabled={pdfLoading || !pdfFrom || !pdfTo}
+          style={{ background: '#7c3aed', borderColor: '#7c3aed', fontWeight: 600 }}
+        >
+          {pdfLoading ? 'Generating…' : 'Download PDF'}
+        </Button>
+      </Space>
+    </div>
 
       {lowStockProducts.length > 0 && (
-        <Alert
-          message="Low Stock Warning"
-          description={
-            <List size="small" dataSource={lowStockProducts} renderItem={item => (
-              <List.Item>
-                <Text strong>{item.name}</Text> — Only <Text type="danger">{(item.currentStockGrams/1000).toFixed(2)}kg</Text> remaining!
-              </List.Item>
-            )} />
-          }
-          type="warning" showIcon icon={<WarningOutlined />}
-          style={{ marginBottom: 24 }}
-        />
+        <div style={{ marginBottom: 24, background: 'linear-gradient(135deg, #fff7ed, #fef3c7)', border: '1.5px solid #fbbf24', borderRadius: 12, padding: '16px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <WarningOutlined style={{ color: '#d97706', fontSize: 18 }} />
+            <Text strong style={{ fontSize: 15, color: '#92400e' }}>⚠️ Low Stock Alert — {lowStockProducts.length} item{lowStockProducts.length > 1 ? 's' : ''} need restocking</Text>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {lowStockProducts.map(p => {
+              const isPacket = p.unit_type === 'packet';
+              const stockText = isPacket
+                ? `${p.remainingPackets ?? 0} pkts`
+                : (p.currentStockGrams ?? 0) >= 1000
+                  ? `${((p.currentStockGrams ?? 0) / 1000).toFixed(2)} kg`
+                  : `${p.currentStockGrams ?? 0} g`;
+              return (
+                <Tag
+                  key={p.id}
+                  color="red"
+                  style={{ fontSize: 12, padding: '4px 12px', borderRadius: 8, fontWeight: 600 }}
+                >
+                  {p.name}: {stockText} left ⚠
+                </Tag>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {/* Current Stock Overview Panel */}
@@ -338,48 +465,6 @@ export default function Dashboard({ sales, products, wastage = [] }) {
         </Row>
       </div>
 
-      {/* Cash in Hand Section */}
-      <Card
-        style={{ marginBottom: 24, background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)', border: 'none', borderRadius: 16 }}
-        variant="borderless"
-      >
-        <Row align="middle" gutter={[24, 16]}>
-          <Col xs={24} md={12}>
-            <Space align="center" size={12}>
-              <WalletOutlined style={{ fontSize: 36, color: '#f0c040' }} />
-              <div>
-                <Text style={{ color: '#aaa', display: 'block', fontSize: 13 }}>{filterLabel} Revenue (Auto-calculated)</Text>
-                <Text style={{ color: '#fff', fontSize: 28, fontWeight: 700 }}>₹{summaries.revenue.toFixed(2)}</Text>
-              </div>
-            </Space>
-          </Col>
-          <Col xs={24} md={12}>
-            <Text style={{ color: '#aaa', display: 'block', fontSize: 13, marginBottom: 6 }}>Cash in Hand (Enter what you have now)</Text>
-            <InputNumber
-              size="large"
-              prefix="₹"
-              placeholder="e.g. 1500"
-              value={cashInHand}
-              onChange={val => setCashInHand(val)}
-              style={{ width: '100%', borderRadius: 8 }}
-              min={0}
-            />
-            {cashInHand !== null && (
-              <div style={{ marginTop: 10 }}>
-                {cashInHand >= summaries.revenue ? (
-                  <Tag icon={<ArrowUpOutlined />} color="success" style={{ fontSize: 13, padding: '4px 10px' }}>
-                    Matches / Over by ₹{(cashInHand - summaries.revenue).toFixed(2)}
-                  </Tag>
-                ) : (
-                  <Tag icon={<ArrowDownOutlined />} color="error" style={{ fontSize: 13, padding: '4px 10px' }}>
-                    Short by ₹{(summaries.revenue - cashInHand).toFixed(2)}
-                  </Tag>
-                )}
-              </div>
-            )}
-          </Col>
-        </Row>
-      </Card>
 
       {/* End of Day Summary cards */}
       <Title level={4}>{filterLabel} Summary</Title>
@@ -424,7 +509,7 @@ export default function Dashboard({ sales, products, wastage = [] }) {
             border: `1px solid ${summaries.netResult >= 0 ? token.colorWarningBorder : token.colorErrorBorder}` 
           }}>
             <Statistic
-              title={`${filterLabel} Net Result`}
+              title={`${filterLabel} Profit`}
               value={summaries.netResult}
               precision={2} prefix="₹"
               valueStyle={{ color: summaries.netResult >= 0 ? token.colorWarningText : token.colorErrorText, fontWeight: 'bold' }}
@@ -459,7 +544,7 @@ export default function Dashboard({ sales, products, wastage = [] }) {
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="date" />
               <YAxis />
-              <Tooltip formatter={v => `₹${v.toFixed(2)}`} />
+              <RechartTooltip formatter={v => `₹${v.toFixed(2)}`} />
               <Legend />
               <Bar dataKey="Revenue" fill="#8884d8" radius={[4,4,0,0]} />
               <Bar dataKey="Profit"  fill="#82ca9d" radius={[4,4,0,0]} />
@@ -500,7 +585,7 @@ export default function Dashboard({ sales, products, wastage = [] }) {
                     const totalNet = data.reduce((acc, r) => acc + r.netResult, 0);
                     return (
                       <Table.Summary.Row>
-                        <Table.Summary.Cell colSpan={6} index={0}><Text strong>Total Net Result</Text></Table.Summary.Cell>
+                        <Table.Summary.Cell colSpan={6} index={0}><Text strong>Total Net Profit</Text></Table.Summary.Cell>
                         <Table.Summary.Cell index={6}>
                           <Tag color={totalNet >= 0 ? 'green' : 'red'} style={{ fontWeight: 700, fontSize: 14 }}>
                             ₹{totalNet.toFixed(2)}
@@ -517,7 +602,7 @@ export default function Dashboard({ sales, products, wastage = [] }) {
               key: 'sales',
               label: '🧾 Sales Log',
               children: (
-                <Table columns={salesColumns} dataSource={filteredSales} rowKey="id" pagination={{ pageSize: 6 }} />
+                <Table columns={salesColumns} dataSource={filteredSales} rowKey="id" pagination={{ pageSize: 6 }} scroll={{ x: 'max-content' }} />
               )
             },
           ]}

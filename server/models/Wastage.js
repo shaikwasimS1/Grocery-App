@@ -11,7 +11,8 @@ const wastageSchema = new mongoose.Schema({
   reason: { type: String },
   
   // Timestamps
-  wasted_at: { type: Date, default: Date.now, immutable: true }
+  wasted_at: { type: Date }, // Transaction date (mutable, backdatable)
+  entry_created_at: { type: Date, default: Date.now, immutable: true } // Audit trail
 });
 
 module.exports = mongoose.model('Wastage', wastageSchema, 'wastages');

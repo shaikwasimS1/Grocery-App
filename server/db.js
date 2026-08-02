@@ -1,5 +1,10 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const mongoose = require('mongoose');
+const dns = require('dns');
+
+// Force Node.js to use Google DNS to resolve MongoDB Atlas SRV records
+// (local ISP DNS may block SRV lookups on port 27017)
+dns.setServers(['8.8.8.8', '8.8.4.4']);
 
 const connectDB = async () => {
   try {

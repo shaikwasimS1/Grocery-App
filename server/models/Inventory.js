@@ -20,15 +20,20 @@ const inventorySchema = new mongoose.Schema({
   selling_price_per_packet: { type: Number },
   remaining_packets: { type: Number },
 
+  // New Fields
+  supplier_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
+  low_stock_threshold: { type: Number }, // Threshold for dashboard alerts
+
   // Timestamps
-  created_at: { type: Date, default: Date.now, immutable: true },
-  updated_at: { type: Date }
+  created_at: { type: Date }, // Transaction date (mutable, backdatable)
+  updated_at: { type: Date },
+  entry_created_at: { type: Date, default: Date.now, immutable: true }, // Audit trail
+  manually_edited: { type: Boolean, default: false }
 });
 
 // Update the updated_at field on save
-inventorySchema.pre('save', function(next) {
+inventorySchema.pre('save', function() {
   this.updated_at = Date.now();
-  next();
 });
 
 module.exports = mongoose.model('Inventory', inventorySchema, 'inventory');

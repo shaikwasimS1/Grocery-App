@@ -20,4 +20,25 @@ export const fetchWastage = () => api.get('/wastage');
 export const recordWastage = (wastageData) => api.post('/wastage', wastageData);
 export const deleteWastage = (id) => api.delete(`/wastage/${id}`);
 
+// Supplier API Calls
+export const fetchSuppliers = () => api.get('/suppliers');
+export const addSupplier = (data) => api.post('/suppliers', data);
+export const fetchSupplierBalance = (id) => api.get(`/suppliers/${id}/balance`);
+export const addSupplierPayment = (id, data) => api.post(`/suppliers/${id}/payments`, data);
+
+// Customer / Credit Book API Calls
+export const fetchCustomers = () => api.get('/customers');
+export const addCustomer = (data) => api.post('/customers', data);
+export const fetchCustomerBalance = (id) => api.get(`/customers/${id}/balance`);
+export const fetchCustomerSales = (id) => api.get(`/customers/${id}/sales`);
+export const fetchCustomerPayments = (id) => api.get(`/customers/${id}/payments`);
+export const addCreditSale = (id, data) => api.post(`/customers/${id}/sales`, data);
+export const addCreditPayment = (id, data) => api.post(`/customers/${id}/payments`, data);
+
+// Expenses API Calls
+export const fetchExpenses = () => api.get('/expenses');
+export const addExpense = (data) => api.post('/expenses', data);
+export const deleteExpense = (id) => api.delete(`/expenses/${id}`);
+
 export default api;
+
