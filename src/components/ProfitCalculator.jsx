@@ -123,7 +123,7 @@ export default function ProfitCalculator({ products }) {
 
       <Row gutter={[24, 24]}>
         <Col xs={24} md={12}>
-          <Card title="Input Parameters" bordered={false}>
+          <Card title="Input Parameters" variant="borderless">
             <Form
               form={form}
               layout="vertical"
@@ -206,7 +206,7 @@ export default function ProfitCalculator({ products }) {
         </Col>
 
         <Col xs={24} md={12}>
-          <Card title="Results & Analysis" bordered={false} style={{ height: '100%' }}>
+          <Card title="Results & Analysis" variant="borderless" style={{ height: '100%' }}>
             <Row gutter={[16, 24]}>
               <Col span={12}>
                 <Statistic title={calcMode === 'weight' ? 'Cost per Gram' : 'Cost per Packet'} value={results.costPerUnit} precision={4} prefix="₹" />

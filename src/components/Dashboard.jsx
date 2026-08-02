@@ -311,27 +311,27 @@ export default function Dashboard({ sales, products, wastage = [] }) {
         <Text strong style={{ fontSize: 13, color: '#555' }}>📈 Revenue Snapshot</Text>
         <Row gutter={[12, 12]} style={{ marginTop: 8 }}>
           <Col xs={12} sm={8} md={4}>
-            <Card size="small" bordered={false} style={{ background: token.colorFillAlter }}>
+            <Card size="small" variant="borderless" style={{ background: token.colorFillAlter }}>
               <Statistic title="Today" value={revenueSnapshot.today} precision={2} prefix="₹" valueStyle={{ fontSize: 16 }} />
             </Card>
           </Col>
           <Col xs={12} sm={8} md={4}>
-            <Card size="small" bordered={false} style={{ background: token.colorFillAlter }}>
+            <Card size="small" variant="borderless" style={{ background: token.colorFillAlter }}>
               <Statistic title="This Week" value={revenueSnapshot.week} precision={2} prefix="₹" valueStyle={{ fontSize: 16 }} />
             </Card>
           </Col>
           <Col xs={12} sm={8} md={4}>
-            <Card size="small" bordered={false} style={{ background: token.colorFillAlter }}>
+            <Card size="small" variant="borderless" style={{ background: token.colorFillAlter }}>
               <Statistic title="This Month" value={revenueSnapshot.month} precision={2} prefix="₹" valueStyle={{ fontSize: 16 }} />
             </Card>
           </Col>
           <Col xs={12} sm={8} md={5}>
-            <Card size="small" bordered={false} style={{ background: token.colorFillAlter }}>
+            <Card size="small" variant="borderless" style={{ background: token.colorFillAlter }}>
               <Statistic title="This Year" value={revenueSnapshot.year} precision={2} prefix="₹" valueStyle={{ fontSize: 16 }} />
             </Card>
           </Col>
           <Col xs={24} sm={8} md={7}>
-            <Card size="small" bordered={false} style={{ background: 'linear-gradient(90deg, #1d39c4 0%, #0958d9 100%)' }}>
+            <Card size="small" variant="borderless" style={{ background: 'linear-gradient(90deg, #1d39c4 0%, #0958d9 100%)' }}>
               <Statistic title={<span style={{ color: 'rgba(255,255,255,0.7)' }}>All Time Revenue</span>} value={revenueSnapshot.allTime} precision={2} prefix="₹" valueStyle={{ fontSize: 18, color: '#fff', fontWeight: 700 }} />
             </Card>
           </Col>
@@ -341,7 +341,7 @@ export default function Dashboard({ sales, products, wastage = [] }) {
       {/* Cash in Hand Section */}
       <Card
         style={{ marginBottom: 24, background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)', border: 'none', borderRadius: 16 }}
-        bordered={false}
+        variant="borderless"
       >
         <Row align="middle" gutter={[24, 16]}>
           <Col xs={24} md={12}>
@@ -389,7 +389,7 @@ export default function Dashboard({ sales, products, wastage = [] }) {
       
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} sm={12} md={6}>
-          <Card bordered={false} style={{ background: token.colorSuccessBg, border: `1px solid ${token.colorSuccessBorder}` }}>
+          <Card variant="borderless" style={{ background: token.colorSuccessBg, border: `1px solid ${token.colorSuccessBorder}` }}>
             <Statistic 
               title={`${filterLabel} Revenue`} 
               value={summaries.revenue} 
@@ -399,7 +399,7 @@ export default function Dashboard({ sales, products, wastage = [] }) {
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <Card bordered={false} style={{ background: token.colorInfoBg, border: `1px solid ${token.colorInfoBorder}` }}>
+          <Card variant="borderless" style={{ background: token.colorInfoBg, border: `1px solid ${token.colorInfoBorder}` }}>
             <Statistic 
               title={`${filterLabel} Gross Profit`} 
               value={summaries.profit} 
@@ -409,7 +409,7 @@ export default function Dashboard({ sales, products, wastage = [] }) {
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <Card bordered={false} style={{ background: token.colorErrorBg, border: `1px solid ${token.colorErrorBorder}` }}>
+          <Card variant="borderless" style={{ background: token.colorErrorBg, border: `1px solid ${token.colorErrorBorder}` }}>
             <Statistic 
               title={`${filterLabel} Wastage Loss`} 
               value={summaries.wastageLoss} 
@@ -419,7 +419,7 @@ export default function Dashboard({ sales, products, wastage = [] }) {
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <Card bordered={false} style={{ 
+          <Card variant="borderless" style={{ 
             background: summaries.netResult >= 0 ? token.colorWarningBg : token.colorErrorBg, 
             border: `1px solid ${summaries.netResult >= 0 ? token.colorWarningBorder : token.colorErrorBorder}` 
           }}>
@@ -441,7 +441,7 @@ export default function Dashboard({ sales, products, wastage = [] }) {
       
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} sm={12} md={8}>
-          <Card bordered={false} style={{ background: token.colorFillAlter, border: `1px solid ${token.colorBorder}` }}>
+          <Card variant="borderless" style={{ background: token.colorFillAlter, border: `1px solid ${token.colorBorder}` }}>
             <Statistic 
               title={`Purchased ${filterLabel.replace("'s", "")}`} 
               value={summaries.purchases} 
@@ -452,7 +452,7 @@ export default function Dashboard({ sales, products, wastage = [] }) {
       </Row>
 
       {/* Chart */}
-      <Card title="7-Day Trend: Revenue vs Profit vs Wastage" bordered={false} style={{ marginBottom: 24 }}>
+      <Card title="7-Day Trend: Revenue vs Profit vs Wastage" variant="borderless" style={{ marginBottom: 24 }}>
         <div style={{ height: 300 }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
@@ -470,7 +470,7 @@ export default function Dashboard({ sales, products, wastage = [] }) {
       </Card>
 
       {/* Tabbed tables */}
-      <Card bordered={false} extra={
+      <Card variant="borderless" extra={
         <Space>
           <Select value={filterPeriod} onChange={setFilterPeriod} style={{ width: 140 }}>
             <Option value="today">Today</Option>
