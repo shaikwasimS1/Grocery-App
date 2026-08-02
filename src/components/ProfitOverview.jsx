@@ -148,29 +148,48 @@ export default function ProfitOverview({ products, sales, wastage }) {
   ];
 
   const downloadPDF = () => {
-    const doc = new jsPDF({ orientation: 'landscape' });
+    const doc = new jsPDF({ orientation: 'landscape', bufferPages: true });
+    const BRAND = [79, 70, 229];
+    const MUTED = [107, 114, 128];
+    const pageW  = doc.internal.pageSize.getWidth();
+    const genTime = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 
-    // Title
-    doc.setFontSize(18);
-    doc.setTextColor(22, 160, 133);
-    doc.text('FreshTrack - Day-by-Day Profit Report', 14, 18);
+    // ── Header banner ──────────────────────────────────────────
+    doc.setFillColor(...BRAND);
+    doc.rect(0, 0, pageW, 36, 'F');
+    doc.setTextColor(255, 255, 255).setFontSize(18).setFont(undefined, 'bold');
+    doc.text('FreshTrack', 14, 14);
+    doc.setFontSize(9).setFont(undefined, 'normal');
+    doc.setTextColor(200, 200, 255);
+    doc.text('Day-by-Day Profit Report', 14, 24);
+    doc.text(`Generated: ${genTime}`, pageW - 14, 24, { align: 'right' });
 
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Generated on: ${new Date().toLocaleString('en-IN')}`, 14, 26);
+    // ── Summary line ───────────────────────────────────────────
+    let y = 46;
+    doc.setTextColor(50, 50, 50).setFontSize(10).setFont(undefined, 'bold');
+    doc.text(
+      `All Time Net Profit: Rs ${profits.allTime.toFixed(2)}   |   This Month: Rs ${profits.month.toFixed(2)}   |   Today: Rs ${profits.today.toFixed(2)}`,
+      14, y
+    );
+    y += 12;
 
-    // Table setup
-    const headers = ['Date', 'Purchases', 'Revenue', 'Gross Profit', 'Wastage', 'Net Profit'];
-    const colWidths = [40, 35, 35, 35, 35, 38];
-    const startX = 14;
-    let y = 36;
-    const rowH = 9;
+    // ── Section heading ────────────────────────────────────────
+    doc.setFillColor(232, 233, 255);
+    doc.rect(14, y, pageW - 28, 14, 'F');
+    doc.setFillColor(...BRAND);
+    doc.rect(14, y + 3, 5, 8, 'F');
+    doc.setTextColor(...BRAND).setFontSize(10).setFont(undefined, 'bold');
+    doc.text('Daily Profit Breakdown', 22, y + 10);
+    y += 18;
 
-    // Draw header row
-    doc.setFillColor(22, 160, 133);
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(10);
-    doc.setFont(undefined, 'bold');
+    // ── Table ─────────────────────────────────────────────────
+    const headers   = ['Date', 'Purchases (Cost)', 'Revenue', 'Gross Profit', 'Wastage Loss', 'Net Profit'];
+    const colWidths = [44, 44, 40, 40, 40, 44];
+    const startX    = 14;
+    const rowH      = 9;
+
+    doc.setFillColor(...BRAND);
+    doc.setTextColor(255, 255, 255).setFontSize(8.5).setFont(undefined, 'bold');
     let x = startX;
     headers.forEach((h, i) => {
       doc.rect(x, y, colWidths[i], rowH, 'F');
@@ -179,57 +198,51 @@ export default function ProfitOverview({ products, sales, wastage }) {
     });
     y += rowH;
 
-    // Draw data rows
     doc.setFont(undefined, 'normal');
     dailyReport.forEach((r, idx) => {
+      if (y > 185) { doc.addPage(); y = 20; }
+
+      const bg = idx % 2 === 0 ? [255, 255, 255] : [248, 248, 255];
+      doc.setFillColor(...bg);
+      x = startX;
+      colWidths.forEach(w => { doc.rect(x, y, w, rowH, 'F'); x += w; });
+
       const row = [
         formatDate(r.date),
-        `Rs ${(r.purchases||0).toFixed(2)}`,
+        `Rs ${(r.purchases || 0).toFixed(2)}`,
         `Rs ${r.revenue.toFixed(2)}`,
         `Rs ${r.profit.toFixed(2)}`,
-        `-Rs ${r.wastage.toFixed(2)}`,
-        `Rs ${r.netProfit.toFixed(2)}`
+        `Rs ${r.wastage.toFixed(2)}`,
+        `Rs ${r.netProfit.toFixed(2)}`,
       ];
-
-      // Alternate row background
-      if (idx % 2 === 0) {
-        doc.setFillColor(240, 253, 250);
-        x = startX;
-        colWidths.forEach(w => { doc.rect(x, y, w, rowH, 'F'); x += w; });
-      }
 
       x = startX;
       row.forEach((cell, i) => {
-        // Color net profit column
-        if (i === 5) {
-          doc.setTextColor(r.netProfit >= 0 ? 39 : 192, r.netProfit >= 0 ? 174 : 57, r.netProfit >= 0 ? 96 : 43);
-          doc.setFont(undefined, 'bold');
-        } else if (i === 4) {
-          doc.setTextColor(192, 57, 43);
-          doc.setFont(undefined, 'normal');
-        } else {
-          doc.setTextColor(50, 50, 50);
-          doc.setFont(undefined, 'normal');
-        }
+        let color = [50, 50, 50];
+        let bold  = false;
+        if (i === 5) { color = r.netProfit >= 0 ? [5, 150, 105] : [192, 57, 43]; bold = true; }
+        if (i === 4) { color = [192, 57, 43]; }
+        doc.setTextColor(...color).setFont(undefined, bold ? 'bold' : 'normal');
         doc.text(cell, x + 2, y + 6);
         x += colWidths[i];
       });
 
-      // Draw row border
-      doc.setDrawColor(200, 200, 200);
+      doc.setDrawColor(210, 210, 230);
       x = startX;
       colWidths.forEach(w => { doc.rect(x, y, w, rowH); x += w; });
-
       y += rowH;
-
-      // Add new page if needed
-      if (y > 195) {
-        doc.addPage();
-        y = 20;
-      }
     });
 
-    doc.save('FreshTrack_Daily_Profit_Report.pdf');
+    // ── Page numbers ───────────────────────────────────────────
+    const range = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= range; i++) {
+      doc.setPage(i);
+      doc.setTextColor(...MUTED).setFontSize(8).setFont(undefined, 'normal');
+      doc.text('Generated by FreshTrack POS', 14, doc.internal.pageSize.getHeight() - 8);
+      doc.text(`Page ${i} of ${range}`, pageW - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+    }
+
+    doc.save(`FreshTrack_DailyProfit_${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })}.pdf`);
   };
 
   const downloadExcel = () => {

@@ -126,8 +126,13 @@ export default function CreditBook() {
     }
   };
 
-  const totalPending = useMemo(() =>
-    Object.values(balances).reduce((sum, b) => sum + (b.pendingBalance || 0), 0),
+  const totalStats = useMemo(() =>
+    Object.values(balances).reduce((sum, b) => {
+      sum.pending += (b.pendingBalance || 0);
+      sum.given += (b.totalCredit || 0);
+      sum.paid += (b.totalPaid || 0);
+      return sum;
+    }, { pending: 0, given: 0, paid: 0 }),
   [balances]);
 
   const columns = [
@@ -150,7 +155,7 @@ export default function CreditBook() {
       }
     },
     {
-      title: 'Total Paid Back',
+      title: 'Total Paid',
       key: 'paid',
       render: (_, r) => {
         const b = balances[r._id];
@@ -158,14 +163,14 @@ export default function CreditBook() {
       }
     },
     {
-      title: 'Balance Owed',
+      title: 'Pending Balance',
       key: 'balance',
       render: (_, r) => {
         const b = balances[r._id];
         const pending = b?.pendingBalance || 0;
         return (
           <Tag color={pending > 0 ? 'red' : 'green'} style={{ fontWeight: 700, fontSize: 13 }}>
-            {pending > 0 ? `₹${pending.toFixed(2)} pending` : '✓ Cleared'}
+            {pending > 0 ? `₹${pending.toFixed(2)} pending` : '✓ Settled'}
           </Tag>
         );
       }
@@ -228,39 +233,49 @@ export default function CreditBook() {
         </Space>
       </div>
 
-      {totalPending > 0 && (
+      {totalStats.pending > 0 && (
         <Alert
           type="warning"
           showIcon
-          message={`Total pending Udhaar: ₹${totalPending.toFixed(2)} across ${Object.values(balances).filter(b => b.pendingBalance > 0).length} customer(s)`}
+          message={`Total pending Udhaar: ₹${totalStats.pending.toFixed(2)} across ${Object.values(balances).filter(b => b.pendingBalance > 0).length} customer(s)`}
           style={{ marginBottom: 16 }}
         />
       )}
 
       {/* Summary Cards */}
-      <Row gutter={16} style={{ marginBottom: 20 }}>
-        <Col xs={24} sm={8}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
+        <Col xs={12} sm={6}>
           <Card style={{ borderRadius: 12 }}>
             <Statistic title="Total Customers" value={customers.length} prefix={<UserOutlined />} />
           </Card>
         </Col>
-        <Col xs={24} sm={8}>
+        <Col xs={12} sm={6}>
           <Card style={{ borderRadius: 12 }}>
             <Statistic
-              title="Total Udhaar Pending"
-              value={totalPending.toFixed(2)}
+              title="Total Credit Given"
+              value={totalStats.given.toFixed(2)}
               prefix="₹"
-              valueStyle={{ color: totalPending > 0 ? '#dc2626' : '#059669' }}
+              valueStyle={{ color: '#096dd9' }}
             />
           </Card>
         </Col>
-        <Col xs={24} sm={8}>
+        <Col xs={12} sm={6}>
           <Card style={{ borderRadius: 12 }}>
             <Statistic
-              title="Customers with Dues"
-              value={Object.values(balances).filter(b => (b.pendingBalance || 0) > 0).length}
-              suffix={`/ ${customers.length}`}
-              valueStyle={{ color: '#d97706' }}
+              title="Total Paid (Collected)"
+              value={totalStats.paid.toFixed(2)}
+              prefix="₹"
+              valueStyle={{ color: '#389e0d' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card style={{ borderRadius: 12 }}>
+            <Statistic
+              title="Total Udhaar Pending"
+              value={totalStats.pending.toFixed(2)}
+              prefix="₹"
+              valueStyle={{ color: totalStats.pending > 0 ? '#dc2626' : '#059669' }}
             />
           </Card>
         </Col>

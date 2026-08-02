@@ -79,27 +79,42 @@ export default function CashInHand({ sales }) {
   };
 
   const downloadPDF = () => {
-    const doc = new jsPDF({ orientation: 'landscape' });
+    const doc = new jsPDF({ orientation: 'landscape', bufferPages: true });
+    const BRAND  = [79, 70, 229];
+    const MUTED  = [107, 114, 128];
+    const GREEN  = [5, 150, 105];
+    const RED    = [192, 57, 43];
+    const pageW  = doc.internal.pageSize.getWidth();
+    const genTime = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 
-    // Title
-    doc.setFontSize(18);
-    doc.setTextColor(79, 70, 229);
-    doc.text('FreshTrack - Cash in Hand Report', 14, 18);
+    // ── Header banner ──────────────────────────────────────────
+    doc.setFillColor(...BRAND);
+    doc.rect(0, 0, pageW, 36, 'F');
+    doc.setTextColor(255, 255, 255).setFontSize(18).setFont(undefined, 'bold');
+    doc.text('FreshTrack', 14, 14);
+    doc.setFontSize(9).setFont(undefined, 'normal');
+    doc.setTextColor(200, 200, 255);
+    doc.text('Cash in Hand Report', 14, 24);
+    doc.text(`Generated: ${genTime}`, pageW - 14, 24, { align: 'right' });
 
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Generated on: ${new Date().toLocaleString('en-IN')}`, 14, 26);
-
-    // Summary section
-    doc.setFontSize(11);
-    doc.setFont(undefined, 'bold');
-    doc.setTextColor(50, 50, 50);
+    // ── Summary line ───────────────────────────────────────────
+    let y = 46;
+    doc.setTextColor(50, 50, 50).setFontSize(10).setFont(undefined, 'bold');
     doc.text(
-      `Today's Revenue: Rs ${totalEarnings.today.toFixed(2)}   |   Today's Cash Saved: Rs ${totalSaved.today.toFixed(2)}   |   All Time Revenue: Rs ${totalEarnings.allTime.toFixed(2)}`,
-      14, 34
+      `Today's Revenue: Rs ${totalEarnings.today.toFixed(2)}   |   Cash Saved Today: Rs ${totalSaved.today.toFixed(2)}   |   All Time Revenue: Rs ${totalEarnings.allTime.toFixed(2)}`,
+      14, y
     );
+    y += 14;
 
-    // Comparison table
+    // ── Section heading: Period Comparison ─────────────────────
+    doc.setFillColor(232, 233, 255);
+    doc.rect(14, y, pageW - 28, 14, 'F');
+    doc.setFillColor(...BRAND);
+    doc.rect(14, y + 3, 5, 8, 'F');
+    doc.setTextColor(...BRAND).setFontSize(10).setFont(undefined, 'bold');
+    doc.text('Period Comparison', 22, y + 10);
+    y += 18;
+
     const periods = [
       { label: 'Today',      earned: totalEarnings.today,   saved: totalSaved.today   },
       { label: 'This Week',  earned: totalEarnings.week,    saved: totalSaved.week    },
@@ -109,17 +124,14 @@ export default function CashInHand({ sales }) {
     ];
 
     const compHeaders = ['Period', 'Total Earned (Revenue)', 'Cash Saved', 'Difference'];
-    const compWidths  = [40, 65, 55, 50];
+    const compWidths  = [44, 68, 60, 56];
     const startX = 14;
-    let y = 44;
-    const rowH = 9;
+    const rowH   = 9;
+    let x;
 
-    // Header row
-    doc.setFillColor(79, 70, 229);
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(9);
-    doc.setFont(undefined, 'bold');
-    let x = startX;
+    doc.setFillColor(...BRAND);
+    doc.setTextColor(255, 255, 255).setFontSize(8.5).setFont(undefined, 'bold');
+    x = startX;
     compHeaders.forEach((h, i) => {
       doc.rect(x, y, compWidths[i], rowH, 'F');
       doc.text(h, x + 2, y + 6);
@@ -130,52 +142,47 @@ export default function CashInHand({ sales }) {
     doc.setFont(undefined, 'normal');
     periods.forEach((p, idx) => {
       const diff = p.saved - p.earned;
-      if (idx % 2 === 0) {
-        doc.setFillColor(240, 240, 255);
-        x = startX;
-        compWidths.forEach(w => { doc.rect(x, y, w, rowH, 'F'); x += w; });
-      }
+      const bg = idx % 2 === 0 ? [255, 255, 255] : [248, 248, 255];
+      doc.setFillColor(...bg);
+      x = startX;
+      compWidths.forEach(w => { doc.rect(x, y, w, rowH, 'F'); x += w; });
+
       const row = [
         p.label,
         `Rs ${p.earned.toFixed(2)}`,
         `Rs ${p.saved.toFixed(2)}`,
         diff >= 0 ? `+Rs ${diff.toFixed(2)}` : `-Rs ${Math.abs(diff).toFixed(2)}`,
       ];
+
       x = startX;
       row.forEach((cell, i) => {
-        if (i === 3) {
-          doc.setTextColor(diff >= 0 ? 5 : 192, diff >= 0 ? 150 : 57, diff >= 0 ? 105 : 43);
-          doc.setFont(undefined, 'bold');
-        } else {
-          doc.setTextColor(50, 50, 50);
-          doc.setFont(undefined, 'normal');
-        }
+        const color = i === 3 ? (diff >= 0 ? GREEN : RED) : [50, 50, 50];
+        doc.setTextColor(...color).setFont(undefined, i === 3 ? 'bold' : 'normal');
         doc.text(cell, x + 2, y + 6);
         x += compWidths[i];
       });
-      doc.setDrawColor(200, 200, 200);
+      doc.setDrawColor(210, 210, 230);
       x = startX;
       compWidths.forEach(w => { doc.rect(x, y, w, rowH); x += w; });
       y += rowH;
     });
 
-    y += 10;
-
-    // History section
+    // ── Section heading: Cash Save History ────────────────────
     if (entries.length > 0) {
-      doc.setFontSize(13);
-      doc.setFont(undefined, 'bold');
-      doc.setTextColor(79, 70, 229);
-      doc.text('Cash Save History', startX, y);
-      y += 8;
+      y += 10;
+      doc.setFillColor(232, 233, 255);
+      doc.rect(14, y, pageW - 28, 14, 'F');
+      doc.setFillColor(...BRAND);
+      doc.rect(14, y + 3, 5, 8, 'F');
+      doc.setTextColor(...BRAND).setFontSize(10).setFont(undefined, 'bold');
+      doc.text('Cash Save History', 22, y + 10);
+      y += 18;
 
       const histHeaders = ['Date & Time', 'Note', 'Amount Saved'];
-      const histWidths  = [80, 100, 50];
+      const histWidths  = [90, 110, 56];
 
-      doc.setFillColor(79, 70, 229);
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(9);
-      doc.setFont(undefined, 'bold');
+      doc.setFillColor(...BRAND);
+      doc.setTextColor(255, 255, 255).setFontSize(8.5).setFont(undefined, 'bold');
       x = startX;
       histHeaders.forEach((h, i) => {
         doc.rect(x, y, histWidths[i], rowH, 'F');
@@ -186,12 +193,12 @@ export default function CashInHand({ sales }) {
 
       doc.setFont(undefined, 'normal');
       entries.forEach((e, idx) => {
-        if (y > 190) { doc.addPage(); y = 20; }
-        if (idx % 2 === 0) {
-          doc.setFillColor(240, 240, 255);
-          x = startX;
-          histWidths.forEach(w => { doc.rect(x, y, w, rowH, 'F'); x += w; });
-        }
+        if (y > 185) { doc.addPage(); y = 20; }
+        const bg = idx % 2 === 0 ? [255, 255, 255] : [248, 248, 255];
+        doc.setFillColor(...bg);
+        x = startX;
+        histWidths.forEach(w => { doc.rect(x, y, w, rowH, 'F'); x += w; });
+
         const row = [
           new Date(e.date).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
           e.note,
@@ -199,20 +206,30 @@ export default function CashInHand({ sales }) {
         ];
         x = startX;
         row.forEach((cell, i) => {
-          doc.setTextColor(i === 2 ? 5 : 50, i === 2 ? 150 : 50, i === 2 ? 105 : 50);
+          doc.setTextColor(...(i === 2 ? GREEN : [50, 50, 50]));
           doc.setFont(undefined, i === 2 ? 'bold' : 'normal');
           doc.text(String(cell), x + 2, y + 6);
           x += histWidths[i];
         });
-        doc.setDrawColor(200, 200, 200);
+        doc.setDrawColor(210, 210, 230);
         x = startX;
         histWidths.forEach(w => { doc.rect(x, y, w, rowH); x += w; });
         y += rowH;
       });
     }
 
-    doc.save(`CashInHand_${new Date().toISOString().slice(0,10)}.pdf`);
+    // ── Page numbers ───────────────────────────────────────────
+    const range = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= range; i++) {
+      doc.setPage(i);
+      doc.setTextColor(...MUTED).setFontSize(8).setFont(undefined, 'normal');
+      doc.text('Generated by FreshTrack POS', 14, doc.internal.pageSize.getHeight() - 8);
+      doc.text(`Page ${i} of ${range}`, pageW - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+    }
+
+    doc.save(`FreshTrack_CashInHand_${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })}.pdf`);
   };
+
 
   const todayDiff = totalEarnings.today - totalSaved.today;
 

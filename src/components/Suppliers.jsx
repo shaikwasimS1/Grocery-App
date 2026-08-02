@@ -97,8 +97,13 @@ export default function Suppliers() {
     }
   };
 
-  const totalOwed = useMemo(() =>
-    Object.values(balances).reduce((sum, b) => sum + (b.pendingBalance || 0), 0),
+  const totalStats = useMemo(() =>
+    Object.values(balances).reduce((sum, b) => {
+      sum.owed += (b.pendingBalance || 0);
+      sum.purchased += (b.totalPurchases || 0);
+      sum.paid += (b.totalPaid || 0);
+      return sum;
+    }, { owed: 0, purchased: 0, paid: 0 }),
   [balances]);
 
   const supplierPurchases = (supplierId) =>
@@ -188,8 +193,8 @@ export default function Suppliers() {
       </div>
 
       {/* Summary Cards */}
-      <Row gutter={16} style={{ marginBottom: 20 }}>
-        <Col xs={24} sm={8}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
+        <Col xs={12} sm={6}>
           <Card style={{ borderRadius: 12 }}>
             <Statistic
               title="Total Suppliers"
@@ -198,23 +203,33 @@ export default function Suppliers() {
             />
           </Card>
         </Col>
-        <Col xs={24} sm={8}>
+        <Col xs={12} sm={6}>
           <Card style={{ borderRadius: 12 }}>
             <Statistic
-              title="Total Amount Owed"
-              value={totalOwed.toFixed(2)}
+              title="Total Purchased"
+              value={totalStats.purchased.toFixed(2)}
               prefix="₹"
-              valueStyle={{ color: totalOwed > 0 ? '#dc2626' : '#059669' }}
+              valueStyle={{ color: '#096dd9' }}
             />
           </Card>
         </Col>
-        <Col xs={24} sm={8}>
+        <Col xs={12} sm={6}>
           <Card style={{ borderRadius: 12 }}>
             <Statistic
-              title="Suppliers with Pending Dues"
-              value={Object.values(balances).filter(b => (b.pendingBalance || 0) > 0).length}
-              suffix={`/ ${suppliers.length}`}
-              valueStyle={{ color: '#d97706' }}
+              title="Total Paid to Suppliers"
+              value={totalStats.paid.toFixed(2)}
+              prefix="₹"
+              valueStyle={{ color: '#389e0d' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card style={{ borderRadius: 12 }}>
+            <Statistic
+              title="Total Amount Owed"
+              value={totalStats.owed.toFixed(2)}
+              prefix="₹"
+              valueStyle={{ color: totalStats.owed > 0 ? '#dc2626' : '#059669' }}
             />
           </Card>
         </Col>

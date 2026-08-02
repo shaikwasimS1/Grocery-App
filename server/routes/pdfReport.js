@@ -238,10 +238,10 @@ module.exports = function registerPdfRoute(app, {
       const { from, to } = req.query;
       if (!from || !to) return res.status(400).send('from and to query params required');
 
-      const fromDate = new Date(from);
-      fromDate.setHours(0, 0, 0, 0);
-      const toDate = new Date(to);
-      toDate.setHours(23, 59, 59, 999);
+      // Use IST-explicit boundaries — avoids UTC/server-timezone edge cases
+      // "2026-08-02" becomes 2026-08-02T00:00:00+05:30 (IST midnight)
+      const fromDate = new Date(`${from}T00:00:00+05:30`);
+      const toDate   = new Date(`${to}T23:59:59+05:30`);
 
       const dateRange = { $gte: fromDate, $lte: toDate };
 
@@ -260,6 +260,7 @@ module.exports = function registerPdfRoute(app, {
       ]);
 
       // ── Financial totals ───────────────────────────────────
+      // Note: Sale populates item_id (Inventory doc), so item name is at s.item_id.item_name
       const totalRevenue     = sales.reduce((s, r) => s + (r.total_amount || 0), 0);
       const totalCOGS        = sales.reduce((s, r) => s + (r.qty_sold * (r.cost_price_per_unit || 0)), 0);
       const grossProfit      = totalRevenue - totalCOGS;
@@ -345,7 +346,7 @@ module.exports = function registerPdfRoute(app, {
       } else {
         const salesRows = sales.map(s => [
           fmtDate(s.sold_at),
-          s.item_name || '-',
+          s.item_id?.item_name || '-',   // item_name lives on the populated Inventory doc
           fmtQty(s.qty_sold, s.unit_type),
           fmtMoney(s.total_amount),
           fmtMoney(s.profit),
@@ -412,8 +413,8 @@ module.exports = function registerPdfRoute(app, {
       } else {
         const wastageRows = wastage.map(w => [
           fmtDate(w.wasted_at),
-          w.item_name || '-',
-          fmtQty(w.qty_wasted, w.unit_type),
+          w.item_id?.item_name || '-',   // item_name lives on the populated Inventory doc
+          fmtQty(w.qty_wasted, w.item_id?.unit_type || 'weight'),
           fmtMoney(w.loss_value),
           w.reason || '-',
         ]);

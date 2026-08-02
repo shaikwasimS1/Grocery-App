@@ -74,35 +74,51 @@ export default function InventoryPurchases({ products }) {
   }, [metrics.items, searchQuery]);
 
   const downloadPDF = () => {
-    const doc = new jsPDF({ orientation: 'landscape' });
+    const doc = new jsPDF({ orientation: 'landscape', bufferPages: true });
+    const BRAND = [79, 70, 229];   // indigo
+    const MUTED = [107, 114, 128]; // grey
+    const pageW = doc.internal.pageSize.getWidth();
+    const genTime = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 
-    // Title
-    doc.setFontSize(18);
-    doc.setTextColor(185, 28, 28);
-    doc.text('FreshTrack - Inventory Purchases Report', 14, 18);
+    // ── Header banner ──────────────────────────────────────────
+    doc.setFillColor(...BRAND);
+    doc.rect(0, 0, pageW, 36, 'F');
 
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Generated on: ${new Date().toLocaleString('en-IN')}`, 14, 26);
-
-    // Summary section
-    doc.setFontSize(11);
-    doc.setFont(undefined, 'bold');
-    doc.setTextColor(50, 50, 50);
-    doc.text(`Total Spent: Rs ${metrics.totalSpent.toFixed(2)}   |   Current Stock Value: Rs ${metrics.currentStockValue.toFixed(2)}`, 14, 34);
-
-    // Table setup
-    const headers = ['Item Name', 'Type', 'Date Added', 'Purchased Qty', 'Total Spent', 'Remaining', 'Stock Value'];
-    const colWidths = [45, 22, 35, 30, 32, 28, 32];
-    const startX = 14;
-    let y = 44;
-    const rowH = 9;
-
-    // Draw header row
-    doc.setFillColor(185, 28, 28);
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(9);
-    doc.setFont(undefined, 'bold');
+    doc.setFontSize(18).setFont(undefined, 'bold');
+    doc.text('FreshTrack', 14, 14);
+
+    doc.setFontSize(9).setFont(undefined, 'normal');
+    doc.setTextColor(200, 200, 255);
+    doc.text('Inventory Purchases Report', 14, 24);
+    doc.text(`Generated: ${genTime}`, pageW - 14, 24, { align: 'right' });
+
+    // ── Summary line ───────────────────────────────────────────
+    let y = 46;
+    doc.setTextColor(50, 50, 50).setFontSize(10).setFont(undefined, 'bold');
+    doc.text(
+      `Total Spent: Rs ${metrics.totalSpent.toFixed(2)}   |   Current Stock Value: Rs ${metrics.currentStockValue.toFixed(2)}`,
+      14, y
+    );
+    y += 12;
+
+    // ── Section heading ────────────────────────────────────────
+    doc.setFillColor(232, 233, 255);
+    doc.rect(14, y, pageW - 28, 14, 'F');
+    doc.setFillColor(...BRAND);
+    doc.rect(14, y + 3, 5, 8, 'F');   // colored bullet
+    doc.setTextColor(...BRAND).setFontSize(10).setFont(undefined, 'bold');
+    doc.text('Purchase Details', 22, y + 10);
+    y += 18;
+
+    // ── Table ─────────────────────────────────────────────────
+    const headers   = ['Item Name', 'Type', 'Date Added', 'Purchased Qty', 'Total Spent', 'Remaining', 'Stock Value'];
+    const colWidths = [55, 22, 38, 34, 34, 30, 34];
+    const startX    = 14;
+    const rowH      = 9;
+
+    doc.setFillColor(...BRAND);
+    doc.setTextColor(255, 255, 255).setFontSize(8).setFont(undefined, 'bold');
     let x = startX;
     headers.forEach((h, i) => {
       doc.rect(x, y, colWidths[i], rowH, 'F');
@@ -111,9 +127,17 @@ export default function InventoryPurchases({ products }) {
     });
     y += rowH;
 
-    // Draw data rows
     doc.setFont(undefined, 'normal');
+    const totalRows = metrics.items.length;
     metrics.items.forEach((item, idx) => {
+      if (y > 185) { doc.addPage(); y = 20; }
+
+      const isLast = idx === totalRows - 1;
+      const bg = isLast ? [232, 233, 255] : (idx % 2 === 0 ? [255, 255, 255] : [248, 248, 255]);
+      doc.setFillColor(...bg);
+      x = startX;
+      colWidths.forEach(w => { doc.rect(x, y, w, rowH, 'F'); x += w; });
+
       const row = [
         item.name,
         item.unit_type === 'packet' ? 'Packet' : 'Weight',
@@ -124,43 +148,33 @@ export default function InventoryPurchases({ products }) {
         `Rs ${item.currentVal.toFixed(2)}`,
       ];
 
-      // Alternate row background
-      if (idx % 2 === 0) {
-        doc.setFillColor(255, 242, 242);
-        x = startX;
-        colWidths.forEach(w => { doc.rect(x, y, w, rowH, 'F'); x += w; });
-      }
-
       x = startX;
       row.forEach((cell, i) => {
-        if (i === 4) {
-          doc.setTextColor(185, 28, 28);
-          doc.setFont(undefined, 'bold');
-        } else if (i === 6) {
-          doc.setTextColor(5, 150, 105);
-          doc.setFont(undefined, 'bold');
-        } else {
-          doc.setTextColor(50, 50, 50);
-          doc.setFont(undefined, 'normal');
-        }
+        const color = isLast ? BRAND : (i === 4 ? [185, 28, 28] : i === 6 ? [5, 150, 105] : [50, 50, 50]);
+        doc.setTextColor(...color);
+        doc.setFont(undefined, (isLast || i === 4 || i === 6) ? 'bold' : 'normal');
         doc.text(String(cell), x + 2, y + 6);
         x += colWidths[i];
       });
 
-      // Row border
-      doc.setDrawColor(220, 220, 220);
+      doc.setDrawColor(210, 210, 230);
       x = startX;
       colWidths.forEach(w => { doc.rect(x, y, w, rowH); x += w; });
-
       y += rowH;
-      if (y > 195) {
-        doc.addPage();
-        y = 20;
-      }
     });
 
-    doc.save(`InventoryPurchases_${new Date().toISOString().slice(0,10)}.pdf`);
+    // ── Page numbers ───────────────────────────────────────────
+    const range = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= range; i++) {
+      doc.setPage(i);
+      doc.setTextColor(...MUTED).setFontSize(8).setFont(undefined, 'normal');
+      doc.text('Generated by FreshTrack POS', 14, doc.internal.pageSize.getHeight() - 8);
+      doc.text(`Page ${i} of ${range}`, pageW - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+    }
+
+    doc.save(`FreshTrack_Inventory_${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })}.pdf`);
   };
+
 
   const columns = [
     {
